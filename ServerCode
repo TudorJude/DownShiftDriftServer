@@ -1,0 +1,1251 @@
+
+// == clear read-only player data @keys args.keysToRemove
+handlers.clearPlayerReadOnlyData = function(args, context) {
+  
+  var keysToRemove = []; // create empty array
+  
+  keysToRemove.push(args.keysToRemove);
+  
+    var playerData = server.UpdateUserReadOnlyData( 
+    {
+    	PlayFabId: currentPlayerId,
+      	KeysToRemove:keysToRemove
+  	}
+      );
+}
+
+//==== Split recording data Set/Get handlers
+
+handlers.setSplitPlayerRecording = function(args, context) {
+  
+  //check player trophy count
+  var keysToGet = []; // create empty array
+  
+  keysToGet.push("TrophyCount");
+  
+  var trophyCountStatistic = server.GetPlayerStatistics(
+    {
+      PlayFabId: currentPlayerId,
+      StatisticNames: keysToGet
+    }
+    );
+  
+  //var trophyAmount = trophyCountStatistic.Statistics["TrophyCount"].Value;
+  
+  var dict = []; // create an empty array
+
+		dict.push({
+		    Key:   args.keyPos  + "_" + args.envIndex + "_" + args.courseIndex, //ex RecPos_0_1
+		    Value: args.recordingPos
+		});
+  
+  		dict.push({
+		    Key:   args.keyRot  + "_" + args.envIndex + "_" + args.courseIndex, //ex RecPos_0_1
+		    Value: args.recordingRot
+		});
+  
+  var playerData = server.UpdateUserReadOnlyData( 
+    {
+    	PlayFabId: currentPlayerId,
+      	Data:dict
+  	}
+  );
+  
+  var titleDataVal = server.GetTitleInternalData(
+    {
+      Key: "Rec" + "_" + args.envIndex + "_" + args.courseIndex, //Recording_0_0,
+    }
+    );
+  
+  var str2 = titleDataVal.Data["Rec_" + args.envIndex + "_" + args.courseIndex] || "";
+  log.debug("str2: " + str2);
+  var userArray = str2.split(",");
+  
+  log.debug("users array: " + userArray);
+  log.debug("user array Length: " + userArray.length);
+  
+  var str;
+  
+  if(userArray.length < 6)
+  {
+    log.debug("adding " + currentPlayerId + " to str: " + str);
+    
+    
+    str = titleDataVal.Data["Rec_" + args.envIndex + "_" + args.courseIndex];
+    
+    if(str)
+      str += "," + currentPlayerId;
+    else
+      str = currentPlayerId;
+    
+  }
+  else
+  {
+  	for(var i = 1; i < userArray.length; i++)
+  	{
+    	userArray[i - 1] = userArray[i];
+  	}
+    userArray[userArray.length - 1] = currentPlayerId;
+    str = userArray[0] + ",";
+    for(var i = 1; i < userArray.length - 1; i++)
+    {
+      str += userArray[i] + ",";
+    }
+    
+    str += userArray[userArray.length-1];
+  }
+  
+  log.debug("users: " + str);
+  
+  var titleData = server.SetTitleInternalData(
+    {
+    	Key: "Rec" + "_" + args.envIndex + "_" + args.courseIndex, //Recording_0_0
+    	Value: str
+    }
+    );
+  
+  return {dicVal : dict} ;
+}
+
+handlers.requestSplitPlayerRecording = function(args, context) {
+  
+  //var keyRequest = args.keyRequest;
+  
+  var titleData = server.GetTitleInternalData(
+    {
+      Keys : "Rec_" + args.envIndex + "_" + args.courseIndex //i.e Rec_1_1 
+    }
+    ); 
+  //"3608DE082420BA73" -- jude PC
+  
+  //var requestKeys = 
+  
+  var str = titleData.Data["Rec_" + args.envIndex + "_" + args.courseIndex];
+  var getPlayerArray = str.split(",");
+  
+  //write some kind of sorting algorithm here
+  var opponentId = getPlayerArray[0];
+  
+  var recordingData = server.GetUserReadOnlyData(
+    {
+      PlayFabId: opponentId,
+      Keys: [("RecPos_" + args.envIndex + "_" + args.courseIndex) , ("RecRot_" + args.envIndex + "_" + args.courseIndex)] 
+    }
+    );
+  
+  log.debug("value of recPos: " + recordingData.Data["RecPos_" + args.envIndex + "_" + args.courseIndex]);
+  log.debug("value of recRot: " + recordingData.Data["RecRot_" + args.envIndex + "_" + args.courseIndex]);
+  
+  return {
+    PosData: recordingData.Data["RecPos_" + args.envIndex + "_" + args.courseIndex].Value,
+    RotData: recordingData.Data["RecRot_" + args.envIndex + "_" + args.courseIndex].Value
+         };
+}
+
+// matchmaking code
+handlers.updateTrophyCount = function(args, context) {
+  
+  var keysToGet = []; // create empty array
+  
+  keysToGet.push("TrophyCount");
+  
+  var trophyCountStatistic = server.GetPlayerStatistics(
+    {
+      PlayFabId: currentPlayerId,
+      StatisticNames: keysToGet
+    }
+    );
+  //if the user doesn't have the trophy statistic we create it
+  log.debug("value of trophyCountStat: " + trophyCountStatistic.Statistics);
+  if(trophyCountStatistic.Statistics == "")
+  {
+    var suArray = [];
+
+    var su = {StatisticName : "TrophyCount", Version : "0", Value: "0"};
+    suArray.push(su);
+    
+    var updateRequest = server.UpdatePlayerStatistics(
+    {
+      PlayFabId: currentPlayerId,
+      Statistics: suArray
+    }
+    );
+  }
+  //if he has the statistic let's update his rank
+  else
+  {
+    var trophyAmount;
+    
+    for(var i = 0; i < trophyCountStatistic.Statistics.length; i++)
+    {
+      if(trophyCountStatistic.Statistics[i].StatisticName == "TrophyCount")
+      {
+        trophyAmount = trophyCountStatistic.Statistics[i].Value;
+      }
+    }
+    trophyAmount += 30;
+    var suArray = [];
+    var su = {StatisticName : "TrophyCount", Version : "0", Value: trophyAmount};
+    suArray.push(su);
+    
+    var updateRequest = server.UpdatePlayerStatistics(
+    {
+      PlayFabId: currentPlayerId,
+      Statistics: suArray
+    }
+    );
+  }
+}
+
+handlers.requestInventory = function(args)
+{
+  //retrieve user inventory
+  var userInventoryObject = server.GetUserInventory(
+  {
+    PlayFabId: currentPlayerId,
+  }
+  );
+  
+  return userInventoryObject;
+}
+
+function recalculateCarPr(CarData, carId) 
+{
+    var pr = 0;
+    //calcualte pr based on car level
+    var carCardsCatalog = server.GetCatalogItems(
+       {
+         CatalogVersion : "CarCards"
+       }
+       );
+    for(var i = 0; i < carCardsCatalog.Catalog.length; i++)
+    {
+      if(carCardsCatalog.Catalog[i].ItemId == carId)
+      {
+        var carCardInfo = JSON.parse(carCardsCatalog.Catalog[i].CustomData);
+        pr += parseInt(carCardInfo.basePr) + (parseInt(carCardInfo.prPerLvl) * (parseInt(CarData.CarLvl) - 1));
+        break;
+      }
+    }
+  
+    if(pr == 0) return pr;
+    //calcualte pr based on each part level
+    var partCardsCatalog = server.GetCatalogItems(
+     {
+       CatalogVersion : "PartCards"
+     }
+     );
+  	for(var i = 0; i < partCardsCatalog.Catalog.length; i++)
+    {
+      if(partCardsCatalog.Catalog[i].ItemId == "Brakes")
+      {
+        var brakesCardInfo = JSON.parse(partCardsCatalog.Catalog[i].CustomData);
+        pr += parseInt(brakesCardInfo.basePr) + (parseInt(brakesCardInfo.prPerLvl) * CarData.BrakesLvl);
+      }
+      if(partCardsCatalog.Catalog[i].ItemId == "Engine")
+      {
+        var engineCardInfo = JSON.parse(partCardsCatalog.Catalog[i].CustomData);
+        pr += parseInt(engineCardInfo.basePr) + (parseInt(engineCardInfo.prPerLvl) * CarData.EngineLvl);
+      }
+      if(partCardsCatalog.Catalog[i].ItemId == "Gearbox")
+      {
+        var gbCardInfo = JSON.parse(partCardsCatalog.Catalog[i].CustomData);
+        pr += parseInt(gbCardInfo.basePr) + (parseInt(gbCardInfo.prPerLvl) * CarData.GearboxLvl);
+      }
+      if(partCardsCatalog.Catalog[i].ItemId == "Suspension")
+      {
+        var suspCardInfo = JSON.parse(partCardsCatalog.Catalog[i].CustomData);
+        pr += parseInt(suspCardInfo.basePr) + (parseInt(suspCardInfo.prPerLvl) * CarData.SuspensionLvl);
+      }
+      if(partCardsCatalog.Catalog[i].ItemId == "Tires")
+      {
+        var tiresCardInfo = JSON.parse(partCardsCatalog.Catalog[i].CustomData);
+        pr += parseInt(tiresCardInfo.basePr) + (parseInt(tiresCardInfo.prPerLvl) * CarData.TiresLvl);
+      }
+      if(partCardsCatalog.Catalog[i].ItemId == "Turbo")
+      {
+        var turboCardInfo = JSON.parse(partCardsCatalog.Catalog[i].CustomData);
+        pr += parseInt(turboCardInfo.basePr) + (parseInt(turboCardInfo.prPerLvl) * CarData.TurboLvl);
+      }
+    }
+  
+  return pr;
+}
+
+handlers.purchaseItems = function(args, context)
+{
+  //retrieve user inventory
+  log.debug("RETRIEVING USER INVENTORY");
+  var userInventoryObject = server.GetUserInventory(
+  {
+    PlayFabId: currentPlayerId,
+  }
+  );
+  
+  //retrieve player currency
+  var playerSC = userInventoryObject.VirtualCurrency.SC;
+  var playerHC = userInventoryObject.VirtualCurrency.HC;
+
+  log.debug("user currency: SC: " + playerSC + " HC: " + playerHC);
+  
+  switch(args.purchaseType) 
+  {
+      //CarUpgrade
+    case "carUpgrade":
+      
+      log.debug("== carUpgrade request: " + "carId: " + args.carId);
+      log.debug("RETRIEVING CARDS CATALOGUE");
+      	var carCardsCatalog = server.GetCatalogItems(
+          {
+            CatalogVersion : "CarCards"
+          }
+          );
+
+      var carFound = false;
+      var car;
+      for(var i = 0; i < userInventoryObject.Inventory.length; i++)
+      {
+        if((userInventoryObject.Inventory[i].ItemId == args.carId) && (userInventoryObject.Inventory[i].CatalogVersion == "CarsProgress"))
+        {
+          carFound = true;
+          log.debug("car is in user's inventory!");
+          car = userInventoryObject.Inventory[i];
+          break;
+        }
+      } 
+      	var cardInfo;
+        for(var i = 0; i < carCardsCatalog.Catalog.length; i++)
+        {
+          if(carCardsCatalog.Catalog[i].ItemId == args.carId)
+          {
+            cardInfo = JSON.parse(carCardsCatalog.Catalog[i].CustomData);
+            log.debug("cardInfo found!");
+            break;
+          }
+        }
+      
+      if(cardInfo == undefined)
+      {
+        log.error("cardInfo undefined!");
+            var returnObj = {
+          Result: "Error",
+          Message: "CardNotFoundForCarwithID: " + args.carId + ". It is possible that the carCard ID and the Car ID do not coincide. Check Playfab catalog data."
+            };
+            return returnObj; 
+      }
+      
+      if(carFound == true)
+      {
+        log.debug("user has car: " +  args.carId + "... upgrading");
+        
+        //let's check that the user has enough money + cards
+        var currCost = parseInt(cardInfo.baseCurrCost) + (parseInt(car.CustomData.CarLvl) * parseInt(cardInfo.currCostPerLvl));
+        if(cardInfo.currType == "SC") 
+        {        	
+          if(playerSC < currCost)
+          {
+            log.debug("User doesn't have enough SC");
+           var returnObj = {
+              Result: "Failed",
+        	  Message: "User doesn't have enough SC."
+            };
+            return returnObj; 
+          }
+        }
+        
+        if(cardInfo.currType == "HC") 
+        {        	
+          if(playerHC < currCost)
+          {
+            log.debug("User doesn't have enough HC");           
+           var returnObj = {
+              Result: "Failed",
+        	  Message: "User doesn't have enough HC."
+            };
+            return returnObj;
+          }
+        }
+        
+        log.debug("user has enough currency. Let's check for card balance");
+        
+        var cardCost = parseInt(cardInfo.baseCardCost) + (parseInt(car.CustomData.CarLvl) * parseInt(cardInfo.cardCostPerLvl));
+    	log.debug("cardCost: " + cardCost);
+        var cardFound = false;                                                  
+        for(var i = 0; i < userInventoryObject.Inventory.length; i++)
+      	{
+      	  if((userInventoryObject.Inventory[i].ItemId == args.carId) && (userInventoryObject.Inventory[i].CatalogVersion == "CarCards"))
+      	  {
+            log.debug("consuming: " + userInventoryObject.Inventory[i].ItemInstanceId);
+      	    cardFound = true;
+            try
+            {
+            var itemConsumptionResult = server.ConsumeItem(
+              {
+                PlayFabId: currentPlayerId,
+                ItemInstanceId: userInventoryObject.Inventory[i].ItemInstanceId,
+                ConsumeCount:cardCost
+              }
+			  );
+            }
+            catch(err)
+            {
+              log.debug("itemConsumptionResult.errorCode " + err);
+              
+              var returnObj = {
+              Result: "Failed",
+        	  Message: "User doesn't have enough cards for this car."
+            };
+            return returnObj;
+            }
+      	    break;
+      	  }
+      	} 
+      	
+        log.debug("user has enough cards to purchase upgrade!");
+        
+        if(cardFound == false)
+        {
+          log.debug("User doesn't have cards for this car.");
+          	var returnObj = {
+              Result: "Failed",
+        	  Message: "User doesn't have cards for this car."
+            };
+            return returnObj;
+        }
+
+        //var newPr = parseInt(cardInfo.basePr) + (parseInt(car.CustomData.CarLvl) + 1) * cardInfo.prPerLvl;
+        var newLvl = (parseInt(car.CustomData.CarLvl) + 1);
+        var newPr = recalculateCarPr(car.CustomData, car.ItemId);
+        log.debug("upgrading to car lvl: " +  newLvl + " and pr: " + newPr);
+        var CarData = {
+          "CarLvl" : newLvl,
+          "Pr" : newPr        
+        };
+        server.UpdateUserInventoryItemCustomData(
+          {
+            PlayFabId: currentPlayerId,
+            ItemInstanceId: car.ItemInstanceId,
+            Data: CarData
+          }
+          );
+        
+        var subtractUserCurrencyResult = server.SubtractUserVirtualCurrency(
+          {
+            PlayFabId: currentPlayerId,
+            VirtualCurrency : cardInfo.currType,
+            Amount: currCost
+          }
+          );
+        log.debug("Upgrade Complete!");        
+
+        var objectsUpdated = 
+          [
+          {
+            ItemID : args.carId,
+            CatalogVersion: "CarCards",
+            RemainingUses: itemConsumptionResult.RemainingUses
+          },
+          {
+            ItemID : args.carId,
+            CatalogVersion: "CarsProgress",
+            CustomData : CarData
+          }
+          ];
+        var currencyUpdated;
+        if(subtractUserCurrencyResult.VirtualCurrency == "HC")
+        {
+        	currencyUpdated = {
+				HC : subtractUserCurrencyResult.Balance
+        	};
+        }
+        else
+        {
+            currencyUpdated = {
+				SC : subtractUserCurrencyResult.Balance
+        	};
+        }
+        var invChangeObj = 
+            {
+                Inventory: objectsUpdated,
+          		VirtualCurrency: currencyUpdated
+            }
+        var returnObj = {
+          Result: "OK",
+       	  Message: "InventoryUpdate",
+          InventoryChange:invChangeObj
+        };
+        return returnObj;
+      }
+      else
+      {
+            log.debug("user doesn't have car: " +  args.carId + "... looking for card");
+        	var cardFound = false; 
+        	for(var i = 0; i < userInventoryObject.Inventory.length; i++)
+      		{
+      		  if((userInventoryObject.Inventory[i].ItemId == args.carId) && (userInventoryObject.Inventory[i].CatalogVersion == "CarCards"))
+      		  {
+        	    log.debug("consuming: " + userInventoryObject.Inventory[i].ItemInstanceId);
+      		    cardFound = true;
+        	    try
+        	    {
+        	    var itemConsumptionResult = server.ConsumeItem(
+        	      {
+        	        PlayFabId: currentPlayerId,
+        	        ItemInstanceId: userInventoryObject.Inventory[i].ItemInstanceId,
+        	        ConsumeCount: cardInfo.baseCardCost
+        	      }
+				  );
+        	    }
+        	    catch(err)
+        	    {
+        	      log.debug("itemConsumptionResult.errorCode " + err);
+        	      
+        	      var returnObj = {
+        	      Result: "Failed",
+        		  Message: "User doesn't have enough cards for this car."
+        	    };
+        	    return returnObj;
+        	    }
+      		    break;
+      		  }
+      		}
+        	
+        	if(cardFound == false)
+            {
+                var returnObj = {
+        	      Result: "Failed",
+        		  Message: "User has no cards for this car."
+        	    };
+        	    return returnObj;
+            }
+        
+        	log.debug("user has enough cards to purchase car. Checking if enough currency is availabe");
+        	
+        	if(cardInfo.currType == "SC") 
+        	{        	
+        	  if(playerSC < cardInfo.baseCurrCost)
+        	  {
+        	    log.debug("User doesn't have enough SC");
+        	   var returnObj = {
+        	      Result: "Failed",
+        		  Message: "User doesn't have enough SC."
+        	    };
+        	    return returnObj; 
+        	  }
+        	}
+        	
+        	if(cardInfo.currType == "HC") 
+        	{        	
+        	  if(playerHC < cardInfo.baseCurrCost)
+        	  {
+        	    log.debug("User doesn't have enough HC");           
+        	   var returnObj = {
+        	      Result: "Failed",
+        		  Message: "User doesn't have enough HC."
+        	    };
+        	    return returnObj;
+        	  }
+        	}
+        	
+            var itemsToGive = [];
+            itemsToGive.push(args.carId);
+            
+            var carToGive = server.GrantItemsToUser(
+              {
+                CatalogVersion : "CarsProgress",
+                PlayFabId: currentPlayerId,
+                ItemIds : itemsToGive
+              }
+              );
+        	
+       
+        	if(carToGive.ItemGrantResults[0].Result == false)
+            {
+              log.error("Something went wrong while giving user the item, refunding cards");
+              var cardsToRefund = [];
+        
+        	  for(var i = 0 ; i < cardInfo.baseCardCost; i++)
+        	  {
+        	      cardsToRefund.push(args.carId);
+        	  }
+        
+              var cardRefundResult = server.GrantItemsToUser(
+              {
+                CatalogVersion : "CarCards",
+                PlayFabId: currentPlayerId,
+                ItemIds : cardsToRefund
+              }
+              );
+              
+                var returnObj = {
+        	      Result: "Failed",
+        		  Message: "Something went wrong while giving user the item, refunding cards."
+        	    };
+        	    return returnObj;
+              
+            }  
+        
+            var subtractUserCurrencyResult = server.SubtractUserVirtualCurrency(
+          	{
+          	  PlayFabId: currentPlayerId,
+          	  VirtualCurrency : cardInfo.currType,
+          	  Amount: cardInfo.baseCurrCost
+          	}
+          	);
+        
+        	var CarData = {
+              "CarLvl" : "1",
+              "EngineLvl" : "0",
+              "BrakesLvl" : "0",
+              "GearboxLvl" : "0",
+              "SuspensionLvl" : "0"           
+            };
+        
+        	server.UpdateUserInventoryItemCustomData(
+              {
+                PlayFabId: currentPlayerId,
+                ItemInstanceId: carToGive.ItemGrantResults[0].ItemInstanceId,
+                Data: CarData
+              }
+              );
+              CarData = {
+                    "TiresLvl" : "0",
+                    "TurboLvl" : "0",
+                    "PaintId" : cardInfo.defaultPaintID,
+                    "DecalId" : "0",
+                    "RimsId" : "0"           
+                  };
+              server.UpdateUserInventoryItemCustomData(
+              {
+                PlayFabId: currentPlayerId,
+                ItemInstanceId: carToGive.ItemGrantResults[0].ItemInstanceId,
+                Data: CarData
+              }
+              );
+              CarData = {
+                    "PlatesId" : "0",
+                    "WindshieldId" : "0",
+                    "Pr" : cardInfo.basePr              
+                  };
+              server.UpdateUserInventoryItemCustomData(
+              {
+                PlayFabId: currentPlayerId,
+                ItemInstanceId: carToGive.ItemGrantResults[0].ItemInstanceId,
+                Data: CarData
+              }
+              );
+        	  //if user doesn't have this paint job we give it to him/her
+        	  var hasPaintJob = false;
+              var hasPaintJobItem = false;
+              for(var i = 0; i < userInventoryObject.Inventory.length; i++)
+      		  {
+      		     if(userInventoryObject.Inventory[i].ItemId == "PaintJobs")
+                 {
+                   hasPaintJobItem = true;
+                   log.debug("user has paintjobs");
+                   if(userInventoryObject.Inventory[i].CustomData != undefined)
+                   {
+                      log.debug("user has paintjobs customData");
+                      if (cardInfo.defaultPaintID in userInventoryObject.Inventory[i].CustomData)
+                      {
+                        log.debug("user has paintjob already");
+                        hasPaintJob = true;
+                      }
+                      else
+                      {
+                        log.debug("user doesn't have paintjob");
+                      }
+                   }
+                   else // userInventoryObject.Inventory[i].CustomData == undefined
+                   {
+                        var paintData = {};
+                        paintData[cardInfo.defaultPaintID] = "Owned";
+                        server.UpdateUserInventoryItemCustomData(
+              			{
+              			  PlayFabId: currentPlayerId,
+              			  ItemInstanceId: userInventoryObject.Inventory[i].ItemInstanceId,
+              			  Data: paintData
+              			}
+              			);
+                   }
+                   break;
+                 }//end if "PaintJobs"
+              }//end for
+        	  
+        	  if(hasPaintJobItem == false)
+              {
+                paintToGive = [];
+                paintToGive.push(cardInfo.defaultPaintID);
+              	var custToGive = server.GrantItemsToUser(
+              	{
+              	  CatalogVersion : "Customization",
+              	  PlayFabId: currentPlayerId,
+              	  ItemIds : paintToGive
+              	}
+              	);
+                
+                var paintData = {};
+                paintData[cardInfo.defaultPaintID] = "Owned";
+                server.UpdateUserInventoryItemCustomData(
+              	{
+              	  PlayFabId: currentPlayerId,
+              	  ItemInstanceId: custToGive.ItemGrantResults[0].ItemInstanceId,
+              	  Data: paintData
+              	}
+              	);
+                
+              }
+        
+               //create function result object for new car
+                      CarData = {
+                                  "CarLvl" : "1",
+              					  "EngineLvl" : "0",
+              					  "BrakesLvl" : "0",
+              					  "GearboxLvl" : "0",
+              					  "SuspensionLvl" : "0"    ,
+                    			  "TiresLvl" : "0",
+                    			  "TurboLvl" : "0",
+                    			  "PaintId" : cardInfo.defaultPaintID,
+                    			  "DecalId" : "0",
+                    			  "RimsId" : "0"   ,
+                                  "PlatesId" : "0",
+                    			  "WindshieldId" : "0",
+                    			  "Pr" : cardInfo.basePr     
+                  		};
+        	   var objectsUpdated = 
+          	   [
+          	   {
+          	     ItemID : args.carId,
+          	     CatalogVersion: "CarCards",
+          	     RemainingUses: itemConsumptionResult.RemainingUses
+          	   },
+          	   {
+          	     ItemID : args.carId,
+          	     CatalogVersion: "CarsProgress",
+          	     CustomData : CarData
+          	   }
+          	   ];
+        	   
+               if(hasPaintJob == false)
+               {
+                 var paintDataUpdateObj = {};
+                 paintDataUpdateObj[cardInfo.defaultPaintID] = "Owned";
+                 var pObj =
+                       {
+          	     		ItemID : "PaintJobs",
+          	     		CatalogVersion: "Customization",
+          	     		CustomData : paintDataUpdateObj
+          	   			}
+                 objectsUpdated.push()
+               }
+        
+        	   var currencyUpdated;
+        	   if(subtractUserCurrencyResult.VirtualCurrency == "HC")
+        	   {
+        	   	currencyUpdated = {
+			   		HC : subtractUserCurrencyResult.Balance
+        	   	};
+        	   }
+        	   else
+        	   {
+        	       currencyUpdated = {
+			   		SC : subtractUserCurrencyResult.Balance
+        	   	};
+        	   }
+        	   var invChangeObj = 
+        	       {
+        	           Inventory: objectsUpdated,
+        	     	   VirtualCurrency: currencyUpdated
+        	       }
+        	   var returnObj = {
+        	     Result: "OK",
+       		     Message: "InventoryUpdateNewCar",
+        	     InventoryChange:invChangeObj
+        	   };
+        	   return returnObj;
+        }  
+      
+        break;
+    //PartUpgrade
+    case "partUpgrade":
+        log.debug("Upgrading Part: " + args.partId + " on Car: " + args.carId);
+      	
+      	log.debug("Checking to see if car exists in catalog");
+      	var carCatalog = server.GetCatalogItems(
+          {
+            CatalogVersion : "CarsProgress"
+          }
+          );
+
+      	  var carExists = false;
+      	  for(var i = 0; i < carCatalog.Catalog.length; i++)
+      	  {
+      	    if(carCatalog.Catalog[i].ItemId == args.carId)
+      	    {
+      	      carExists = true;
+      	      break;
+      	    }
+      	  }
+      	
+      	if(carExists == false)
+      	{
+      	  log.error("invalid car ID");
+      	      var returnObj = {
+      	    Result: "Error",
+      	    Message: "car with ID: " + args.carId + " not found in catalog."
+      	      };
+      	      return returnObj; 
+      	}
+
+        log.debug("Checking to see if part exists in catalog");
+      	var partsCatalog = server.GetCatalogItems(
+          {
+            CatalogVersion : "PartCards"
+          }
+          );
+        
+          var partExists = false;
+      	  var cardInfo;
+      	  for(var i = 0; i < partsCatalog.Catalog.length; i++)
+      	  {
+      	    if(partsCatalog.Catalog[i].ItemId == args.partId)
+      	    {
+              cardInfo = JSON.parse(partsCatalog.Catalog[i].CustomData);
+      	      partExists = true;
+      	      break;
+      	    }
+      	  }
+
+      	if(partExists == false)
+      	{
+      	  log.error("invalid part ID");
+      	      var returnObj = {
+      	    Result: "Error",
+      	    Message: "part with ID: " + args.partId + " not found in catalog."
+      	      };
+      	      return returnObj; 
+      	}
+       
+        log.debug("Checking to see if user has car: " + args.carId);
+        var carFound = false;
+      	var car;
+      	for(var i = 0; i < userInventoryObject.Inventory.length; i++)
+      	{
+      	  if((userInventoryObject.Inventory[i].ItemId == args.carId) && (userInventoryObject.Inventory[i].CatalogVersion == "CarsProgress"))
+      	  {
+      	    carFound = true;
+      	    log.debug("car is in user's inventory!");
+      	    car = userInventoryObject.Inventory[i];
+      	    break;
+      	  }
+      	} 
+      	
+      	if(carFound == false)
+        {
+            log.debug("user can't upgrade a part on a car he doesn't own");
+      	      var returnObj = {
+      	    Result: "Failed",
+      	    Message: "car with ID: " + args.carId + " not found in user inventory."
+      	      };
+      	      return returnObj; 
+        }
+        log.debug("Checking to see whether user has enough money to upgrade part");
+      
+        log.debug("Checking to see if user has part and or has enough parts");
+        var partFound = false;
+      	var part;
+      	for(var i = 0; i < userInventoryObject.Inventory.length; i++)
+      	{
+      	  if((userInventoryObject.Inventory[i].ItemId == args.partId) && (userInventoryObject.Inventory[i].CatalogVersion == "PartCards"))
+      	  {
+      	    partFound = true;
+      	    log.debug("part is in user's inventory!");
+      	    part = userInventoryObject.Inventory[i];
+            var partsRequired;
+            var currCost;
+            var newlvl;
+            var CarDataToBeUpdated;
+            
+            switch(args.partId)
+            {
+              case "Brakes":
+                log.debug("calculating brakes cost!");
+                partsRequired = parseInt(cardInfo.baseCardCost) + (parseInt(car.CustomData.BrakesLvl) * parseInt(cardInfo.cardCostPerLvl));
+                currCost = parseInt(cardInfo.baseCurrCost) + (parseInt(car.CustomData.BrakesLvl) * parseInt(cardInfo.currCostPerLvl));
+                newlvl = parseInt(car.CustomData.BrakesLvl) + 1;
+                CarDataToBeUpdated = {
+           		    "BrakesLvl" : newlvl      
+            	};
+                car.CustomData.BrakesLvl = newlvl;
+                log.debug("we need: " + partsRequired + " cards");
+                break;
+              case "Engine":
+                log.debug("calculating Engine cost!");
+                partsRequired = parseInt(cardInfo.baseCardCost) + (parseInt(car.CustomData.EngineLvl) * parseInt(cardInfo.cardCostPerLvl));
+                currCost = parseInt(cardInfo.baseCurrCost) + (parseInt(car.CustomData.EngineLvl) * parseInt(cardInfo.currCostPerLvl));
+                newlvl = parseInt(car.CustomData.EngineLvl) + 1;
+                CarDataToBeUpdated = {
+           		    "EngineLvl" : newlvl      
+            	};
+                car.CustomData.EngineLvl = newlvl;
+                log.debug("we need: " + partsRequired + " cards");
+                break;
+              case "Gearbox":
+                log.debug("calculating Gearbox cost!");
+                partsRequired = parseInt(cardInfo.baseCardCost) + (parseInt(car.CustomData.GearboxLvl) * parseInt(cardInfo.cardCostPerLvl));
+                currCost = parseInt(cardInfo.baseCurrCost) + (parseInt(car.CustomData.GearboxLvl) * parseInt(cardInfo.currCostPerLvl));
+                newlvl = parseInt(car.CustomData.GearboxLvl) + 1;
+                CarDataToBeUpdated = {
+           		    "GearboxLvl" : newlvl      
+            	};
+                car.CustomData.GearboxLvl = newlvl;
+                log.debug("we need: " + partsRequired + " cards");
+                break;
+              case "Suspension":
+                log.debug("calculating Suspension cost!");
+				partsRequired = parseInt(cardInfo.baseCardCost) + (parseInt(car.CustomData.SuspensionLvl) * parseInt(cardInfo.cardCostPerLvl));
+                currCost = parseInt(cardInfo.baseCurrCost) + (parseInt(car.CustomData.SuspensionLvl) * parseInt(cardInfo.currCostPerLvl));
+                newlvl = parseInt(car.CustomData.SuspensionLvl) + 1;
+                CarDataToBeUpdated = {
+           		    "SuspensionLvl" : newlvl      
+            	};
+                car.CustomData.SuspensionLvl = newlvl;
+                log.debug("we need: " + partsRequired + " cards");
+                break;
+              case "Tires":
+                log.debug("calculating Tires cost!");
+                partsRequired = parseInt(cardInfo.baseCardCost) + (parseInt(car.CustomData.TiresLvl) * parseInt(cardInfo.cardCostPerLvl));
+                currCost = parseInt(cardInfo.baseCurrCost) + (parseInt(car.CustomData.TiresLvl) * parseInt(cardInfo.currCostPerLvl));
+                newlvl = parseInt(car.CustomData.TiresLvl) + 1;
+                CarDataToBeUpdated = {
+           		    "TiresLvl" : newlvl      
+            	};
+                car.CustomData.TiresLvl = newlvl;
+                log.debug("we need: " + partsRequired + " cards");
+                break;
+              case "Turbo":
+                log.debug("calculating Turbo cost!");
+                partsRequired = parseInt(cardInfo.baseCardCost) + (parseInt(car.CustomData.TurboLvl) * parseInt(cardInfo.cardCostPerLvl));
+                currCost = parseInt(cardInfo.baseCurrCost) + (parseInt(car.CustomData.TurboLvl) * parseInt(cardInfo.currCostPerLvl));
+                newlvl = parseInt(car.CustomData.TurboLvl) + 1;
+                CarDataToBeUpdated = {
+           		    "TurboLvl" : newlvl      
+            	};
+                car.CustomData.TurboLvl = newlvl;
+                log.debug("we need: " + partsRequired + " cards");
+                break;
+              default:
+                var returnObj = {
+        	      Result: "Error",
+        		  Message: "Invalid part id during switch."
+        	    };
+        	    return returnObj;
+                break;
+            } // end switch
+            //// check currency cost
+        	if(cardInfo.currType == "SC") 
+        	{        	
+        	  if(playerSC < currCost)
+        	  {
+        	    log.debug("User doesn't have enough SC");
+        	   var returnObj = {
+        	      Result: "Failed",
+        		  Message: "User doesn't have enough SC."
+        	    };
+        	    return returnObj; 
+        	  }
+        	}
+        	
+        	if(cardInfo.currType == "HC") 
+        	{        	
+        	  if(playerHC < currCost)
+        	  {
+        	    log.debug("User doesn't have enough HC");           
+        	   var returnObj = {
+        	      Result: "Failed",
+        		  Message: "User doesn't have enough HC."
+        	    };
+        	    return returnObj;
+        	  }
+        	}
+            //// end check currency cost
+            
+            
+            log.debug("consuming part instance: " + userInventoryObject.Inventory[i].ItemInstanceId);
+        	    try
+        	    {
+        	    var itemConsumptionResult = server.ConsumeItem(
+        	      {
+        	        PlayFabId: currentPlayerId,
+        	        ItemInstanceId: userInventoryObject.Inventory[i].ItemInstanceId,
+        	        ConsumeCount: partsRequired
+        	      }
+				  );
+        	    }
+        	    catch(err)
+        	    {
+        	      log.debug("itemConsumptionResult.errorCode " + err);
+        	      
+        	      var returnObj = {
+        	      				Result: "Failed",
+        		 				Message: "User doesn't have enough cards for this car."
+        	    					};
+        	      return returnObj;
+        	    } 
+      	       break; //for search
+      	  	   }//if in inventory
+          	   else
+          	   {
+        	      var returnObj = {
+        	      				Result: "Failed",
+        		 				Message: "User doesn't own this part."
+        	    					};
+        	      return returnObj;
+          	   }
+        	}//for 
+          //all checks completed fine so far. Let's update user items
+          var subtractUserCurrencyResult = server.SubtractUserVirtualCurrency(
+          	{
+          	  PlayFabId: currentPlayerId,
+          	  VirtualCurrency : cardInfo.currType,
+          	  Amount: currCost
+          	}
+          	);  
+			var newPr = recalculateCarPr(car.CustomData, car.ItemId);
+            CarDataToBeUpdated.Pr = newPr;
+        	server.UpdateUserInventoryItemCustomData(
+              {
+                PlayFabId: currentPlayerId,
+                ItemInstanceId: car.ItemInstanceId,
+                Data: CarDataToBeUpdated
+              }
+              );
+          
+          //return inventory update object
+        	   var objectsUpdated = 
+          	   [
+          	   {
+          	     ItemID : args.partId,
+          	     CatalogVersion: "PartCards",
+          	     RemainingUses: itemConsumptionResult.RemainingUses
+          	   },
+          	   {
+          	     ItemID : args.carId,
+          	     CatalogVersion: "CarsProgress",
+          	     CustomData : CarDataToBeUpdated
+          	   }
+          	   ];
+        
+        	   log.debug("succesfully upgraded part!");
+        	   var currencyUpdated;
+        	   if(subtractUserCurrencyResult.VirtualCurrency == "HC")
+        	   {
+        	   	currencyUpdated = {
+			   		HC : subtractUserCurrencyResult.Balance
+        	   	};
+        	   }
+        	   else
+        	   {
+        	       currencyUpdated = {
+			   		SC : subtractUserCurrencyResult.Balance
+        	   	};
+        	   }
+        	   var invChangeObj = 
+        	       {
+        	           Inventory: objectsUpdated,
+        	     	   VirtualCurrency: currencyUpdated
+        	       }
+        	   var returnObj = {
+        	     Result: "OK",
+       		     Message: "InventoryUpdatePart",
+        	     InventoryChange:invChangeObj
+        	   };
+      		   return returnObj;//SUCCESS
+        break; // big switch
+    case "custPurchase":
+      //CheckIfItemExists(args.custPurchase, "Customization");
+        log.debug("Purchasing Customization: " + args.custId + " with val: " + args.custVal);
+      	
+      	log.debug("Checking to see if customization exists in catalog");
+      	var custCatalog = server.GetCatalogItems(
+          {
+            CatalogVersion : "Customization"
+          }
+          );
+        
+        var custCatalogItem;
+      	var custPrice = 0;
+      	var custCurr = "SC";
+        for(var i = 0; i < custCatalog.Catalog.length; i++)
+        {
+          if(custCatalog.Catalog[i].ItemId == args.custId)
+          {
+            custCatalogItem = custCatalog.Catalog[i];
+            cardInfo = JSON.parse(custCatalog.Catalog[i].CustomData)
+            var keyRequestCurr = args.custVal + ",Curr";
+            var keyRequestCost = args.custVal + ",Cost";
+            
+            custCurr = cardInfo[keyRequestCurr];
+            custPrice = cardInfo[keyRequestCost];
+            
+            if(custCurr == "SC")
+            {
+              if(custPrice > playerSC)
+              {
+                    log.debug("User doesn't have enough SC. User has " + playerSC + " and the cust costs " + custPrice);
+      	   			var returnObj = {
+      	  						Result: "Failed",
+    							Message: "User doesn't have enough SC."
+      						};
+      	  			return returnObj;
+              }
+            }
+            if(custCurr == "HC")
+            {
+              if(custPrice > playerHC)
+              {
+                    log.debug("User doesn't have enough SC. User has " + playerHC + " and the cust costs " + custPrice);
+      	   			var returnObj = {
+      	  						Result: "Failed",
+    							Message: "User doesn't have enough HC."
+      						};
+      	  			return returnObj;
+              }
+            }
+            
+			log.debug("custCurr: " + custCurr);
+            log.debug("custPrice: " + custPrice);
+            
+            break;
+          }
+        }
+      
+      	if(custCatalogItem == undefined)
+      	{
+      	  log.error("Customization does not exist in catalog");
+      	   var returnObj = {
+      	  						Result: "Error",
+    							Message: "Customization does not exist in catalog."
+      						};
+      	  return returnObj;
+      	}
+      	
+         log.debug("Checking to see if user has said customization");
+         var customizationItem;
+         var customizationItemInstance;
+      	 for(var i = 0; i < userInventoryObject.Inventory.length; i++)
+      	 {
+      	   if(userInventoryObject.Inventory[i].ItemId == args.custId)
+      	   {
+      	     log.debug("user has customization category!");
+             customizationItem = userInventoryObject.Inventory[i];
+             customizationItemInstance = userInventoryObject.Inventory[i].ItemInstanceId;
+              if (customizationItem.CustomData != undefined)
+              {
+                if (String(args.custVal) in customizationItem.CustomData)
+                {
+                  log.debug("user already has this customization");
+                    var returnObj = {
+      	  						Result: "Failed",
+    							Message: "User already has this customization."
+      						};
+      	  			return returnObj;
+                }
+              }
+      	     break;
+      	   }
+      	 } 
+         
+         if(customizationItem == undefined)
+         {
+           log.info("user doesn't have customization category. Granting ... ");
+           var itemsToGive = [];
+           itemsToGive.push(args.custId);
+           
+           var custToGive = server.GrantItemsToUser(
+             {
+               CatalogVersion : "Customization",
+               PlayFabId: currentPlayerId,
+               ItemIds : itemsToGive
+             }
+             );
+           
+           if(custToGive.ItemGrantResults[0].Result == false)
+           {
+             log.error("something went wrong while granting user customization class object");
+             var returnObj =    {
+      	  						Result: "Error",
+    							Message: "something went wrong while granting user customization class object."
+      							};
+      	  	 return returnObj;
+           }
+           customizationItemInstance = custToGive.ItemGrantResults[0].ItemInstanceId;
+         }
+      
+      	 var customizationData = {};
+         customizationData[String(args.custVal)] = "Owned";
+      
+         server.UpdateUserInventoryItemCustomData(
+              {
+                PlayFabId: currentPlayerId,
+                ItemInstanceId: customizationItemInstance,
+                Data: customizationData
+              }
+              );
+          var invChangeObj; 
+          var objectsUpdated = 
+          	   [
+          	   {
+          	     ItemID : args.custId,
+          	     CatalogVersion: "Customization",
+          	     CustomData : customizationData
+          	   }
+          	   ];
+      
+      	  if(custPrice > 0)
+          {
+          	var subtractUserCurrencyResult = server.SubtractUserVirtualCurrency(
+          		{
+          		  PlayFabId: currentPlayerId,
+          		  VirtualCurrency : custCurr,
+          		  Amount: custPrice
+          		}
+          		); 
+            var currencyUpdated;
+        	   if(subtractUserCurrencyResult.VirtualCurrency == "HC")
+        	   {
+        	   	currencyUpdated = {
+			   		HC : subtractUserCurrencyResult.Balance
+        	   	};
+        	   }
+        	   else
+        	   {
+        	       currencyUpdated = {
+			   		SC : subtractUserCurrencyResult.Balance
+        	   	};
+        	   }
+            
+            invChangeObj = 
+        	       {
+        	           Inventory: objectsUpdated,
+        	     	   VirtualCurrency: currencyUpdated
+        	       };
+          }      
+            invChangeObj = 
+        	       {
+        	           Inventory: objectsUpdated
+            		};
+        var returnObj = {
+        	     Result: "OK",
+       		     Message: "InventoryUpdateNewCustomization",
+        	     InventoryChange:invChangeObj
+        	   };
+        return returnObj;
+      
+      break; // big switch
+    default:
+        log.debug("invalid purchase parameter");
+   }
+}
+
+
