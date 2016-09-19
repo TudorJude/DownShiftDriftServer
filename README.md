@@ -1,2 +1,2 @@
-# DownShiftDriftServer
-This is the playfab server code for Downshift Drift game.
+# jsContraction
+Used for jsContraction of server code.
